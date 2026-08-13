@@ -3,6 +3,7 @@
 #include "utils.h"
 #include <tuple>
 #include <QtWidgets>
+#include <QStandardPaths>
 #include "Settings.h" // color
 
 enum { TitleColum, DurationColum, TagColum };
@@ -576,8 +577,12 @@ void DownloadDialog::setupUi()
     pathLabel = new ElidedTextLabel;
     auto lastDir = Settings::inst()->value("lastDir").toString();
     if (lastDir.isEmpty() || !QDir(lastDir).exists()) {
-        auto appDir = QDir{QCoreApplication::applicationDirPath()};
-        pathLabel->setText(appDir.absoluteFilePath("Downloads"));
+        auto defaultDir = QStandardPaths::writableLocation(QStandardPaths::DownloadLocation);
+        if (defaultDir.isEmpty()) {
+            auto appDir = QDir{QCoreApplication::applicationDirPath()};
+            defaultDir = appDir.absoluteFilePath("Downloads");
+        }
+        pathLabel->setText(defaultDir);
     } else {
         pathLabel->setText(lastDir);
     }

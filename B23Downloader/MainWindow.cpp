@@ -103,17 +103,9 @@ MainWindow::MainWindow(QWidget *parent)
 
 void MainWindow::closeEvent(QCloseEvent *event)
 {
-    auto dlg = QMessageBox(QMessageBox::Warning, "退出", "是否退出？", QMessageBox::NoButton, this);
-    dlg.addButton("确定", QMessageBox::AcceptRole);
-    dlg.addButton("取消", QMessageBox::RejectRole);
-    auto ret = dlg.exec();
-    if (ret == QMessageBox::AcceptRole) {
-        taskTable->stopAll();
-        taskTable->save();
-        event->accept();
-    } else {
-        event->ignore();
-    }
+    taskTable->stopAll();
+    taskTable->save();
+    event->accept();
 }
 
 void MainWindow::startGetUserInfo()
@@ -125,7 +117,7 @@ void MainWindow::startGetUserInfo()
         return;
     }
     unameLabel->setText("登录中...", Qt::gray);
-    auto rqst = Network::Bili::Request(QUrl("https://api.bilibili.com/nav"));
+    auto rqst = Network::Bili::Request(QUrl("https://api.bilibili.com/x/web-interface/nav"));
     rqst.setTransferTimeout(GetUserInfoTimeout);
     uinfoReply = Network::accessManager()->get(rqst);;
     connect(uinfoReply, &QNetworkReply::finished, this, &MainWindow::getUserInfoFinished);

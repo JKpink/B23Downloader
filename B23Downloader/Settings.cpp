@@ -21,6 +21,11 @@ void CookieJar::clear()
     setAllCookies(QList<QNetworkCookie>());
 }
 
+void CookieJar::addCookies(const QList<QNetworkCookie> &cookies)
+{
+    setAllCookies(allCookies() + cookies);
+}
+
 QByteArray CookieJar::getCookie(const QString &name) const
 {
     for (auto &cookie : allCookies()) {

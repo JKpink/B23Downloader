@@ -24,6 +24,7 @@ public:
 private:
     QJsonValue getReplyData();
     void startGetLoginUrl();
+    void saveLoginCookies(const QString &ssoUrl);
 
 private slots:
     void getLoginUrlFinished();
@@ -35,7 +36,7 @@ private:
     void showRefreshButton();
     void hideRefreshButton();
 
-    QString oauthKey;
+    QString qrcodeKey;
     int polledTimes = 0;
     QTimer *pollTimer;
     QLabel *qrCodeLabel;

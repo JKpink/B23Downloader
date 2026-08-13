@@ -1,10 +1,13 @@
 #include "LoginDialog.h"
 #include "Network.h"
 #include "QrCode.h"
+#include "Settings.h"
 
 #include <QtWidgets>
 #include <QtNetwork>
 #include <QDataStream>
+#include <QUrlQuery>
+#include <QDateTime>
 
 static constexpr int QrCodeExpireTime = 180; // seconds
 static constexpr int PollInterval = 2000; // ms
@@ -113,7 +116,7 @@ QJsonValue LoginDialog::getReplyData()
 
 void LoginDialog::startGetLoginUrl()
 {
-    httpReply = Network::Bili::get("https://passport.bilibili.com/qrcode/getLoginUrl");
+    httpReply = Network::Bili::get("https://passport.bilibili.com/x/passport-login/web/qrcode/generate");
     connect(httpReply, &QNetworkReply::finished, this, &LoginDialog::getLoginUrlFinished);
 }
 
@@ -126,7 +129,12 @@ void LoginDialog::getLoginUrlFinished()
     }
 
     QString url = data["url"].toString();
-    oauthKey = data["oauthKey"].toString();
+    qrcodeKey = data["qrcode_key"].toString();
+    if (qrcodeKey.isEmpty()) {
+        tipLabel->setText("获取二维码失败");
+        showRefreshButton();
+        return;
+    }
     setQrCode(url);
     tipLabel->setText(ScanToLoginTip);
     polledTimes = 0;
@@ -135,8 +143,11 @@ void LoginDialog::getLoginUrlFinished()
 
 void LoginDialog::pollLoginInfo()
 {
-    auto postData = QString("oauthKey=%1").arg(oauthKey).toUtf8();
-    httpReply = Network::Bili::postUrlEncoded("https://passport.bilibili.com/qrcode/getLoginInfo", postData);
+    QUrl url("https://passport.bilibili.com/x/passport-login/web/qrcode/poll");
+    QUrlQuery query;
+    query.addQueryItem("qrcode_key", qrcodeKey);
+    url.setQuery(query);
+    httpReply = Network::Bili::get(url);
     connect(httpReply, &QNetworkReply::finished, this, &LoginDialog::getLoginInfoFinished);
 }
 
@@ -145,32 +156,33 @@ void LoginDialog::getLoginInfoFinished()
     polledTimes++;
     auto data = getReplyData();
     if (data.isNull() || data.isUndefined()) {
-        // network error
+        // network error, keep polling
+        pollTimer->start();
         return;
     }
 
+    auto dataObj = data.toObject();
     bool isPollEnded = false;
-    if (data.isDouble()) {
-        switch (data.toInt()) {
-        case -1: // oauthKey is wrong. should never be this case
-            QMessageBox::critical(this, "", "oauthKey error");
-            break;
-        case -2: // login url (qrcode) is expired
-            isPollEnded = true;
-            qrCodeExpired();
-            break;
-        case -4: // qrcode not scanned
-            break;
-        case -5: // scanned but not confirmed
-            tipLabel->setText("✅扫描成功<br>请在手机上确认");
-            break;
-        default:
-            QMessageBox::warning(this, "Poll Warning", QString("unknown code: %1").arg(data.toInteger()));
-        }
-    } else {
+    int pollCode = dataObj["code"].toInt(-1);
+    QString pollMsg = dataObj["message"].toString();
+    if (pollCode == 0) {
         // scanned and confirmed
         isPollEnded = true;
+        saveLoginCookies(dataObj["url"].toString());
         accept();
+    } else if (pollCode == 86101) {
+        // qrcode not scanned
+    } else {
+        // scanned but not confirmed, or expired, etc.
+        if (pollMsg.contains("确认")) {
+            tipLabel->setText("✅扫描成功<br>请在手机上确认");
+        } else {
+            tipLabel->setText(pollMsg);
+        }
+        if (pollMsg.contains("失效")) {
+            isPollEnded = true;
+            qrCodeExpired();
+        }
     }
 
     if (!isPollEnded) {
@@ -179,6 +191,35 @@ void LoginDialog::getLoginInfoFinished()
         } else {
             pollTimer->start();
         }
+    }
+}
+
+// session cookies are conveyed in the sso url returned by the poll api,
+// (and/or in Set-Cookie headers, which the QNAM cookie jar captures automatically)
+void LoginDialog::saveLoginCookies(const QString &ssoUrl)
+{
+    if (ssoUrl.isEmpty()) {
+        return;
+    }
+    auto urlQuery = QUrlQuery(QUrl(ssoUrl));
+    QList<QNetworkCookie> loginCookies;
+    for (const char *name : {"DedeUserID", "DedeUserID__ckMd5", "SESSDATA", "bili_jct"}) {
+        auto value = urlQuery.queryItemValue(name);
+        if (value.isEmpty()) {
+            continue;
+        }
+        QNetworkCookie cookie(QByteArray(name), value.toUtf8());
+        cookie.setDomain(".bilibili.com");
+        cookie.setPath("/");
+        cookie.setSecure(qstrcmp(name, "SESSDATA") == 0 || qstrcmp(name, "bili_jct") == 0);
+        auto expires = urlQuery.queryItemValue("Expires");
+        if (!expires.isEmpty()) {
+            cookie.setExpirationDate(QDateTime::fromSecsSinceEpoch(expires.toLongLong()));
+        }
+        loginCookies.append(cookie);
+    }
+    if (!loginCookies.isEmpty()) {
+        Settings::inst()->getCookieJar()->addCookies(loginCookies);
     }
 }
 

@@ -20,6 +20,7 @@ public:
     QByteArray getCookie(const QString &name) const;
     bool isEmpty() const;
     void clear();
+    void addCookies(const QList<QNetworkCookie> &cookies);
     QString toString() const;
 
 private:

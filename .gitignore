@@ -1,0 +1,17 @@
+.DS_Store
+
+# 构建产物（qmake/make 生成）
+*.o
+*.stash
+moc_*.cpp
+moc_*.h
+moc_*.o
+qrc_*.cpp
+qrc_*.o
+Makefile
+B23Downloader.app
+
+# 打包产物
+dist/
+*.dmg
+
